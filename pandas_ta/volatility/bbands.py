@@ -1,34 +1,71 @@
 # -*- coding: utf-8 -*-
-from pandas import DataFrame
-from pandas_ta import Imports
-from pandas_ta.overlap import ma
+from pandas import DataFrame, Series
+from pandas_ta._typing import DictLike, Int, IntFloat
+from pandas_ta.ma import ma
+from pandas_ta.maps import Imports
 from pandas_ta.statistics import stdev
-from pandas_ta.utils import get_offset, non_zero_range, tal_ma, verify_series
+from pandas_ta.utils import non_zero_range, tal_ma, v_mamode
+from pandas_ta.utils import v_offset, v_pos_default, v_series, v_talib
 
 
-def bbands(close, length=None, std=None, ddof=0, mamode=None, talib=None, offset=None, **kwargs):
-    """Indicator: Bollinger Bands (BBANDS)"""
-    # Validate arguments
-    length = int(length) if length and length > 0 else 5
-    std = float(std) if std and std > 0 else 2.0
-    mamode = mamode if isinstance(mamode, str) else "sma"
-    ddof = int(ddof) if ddof >= 0 and ddof < length else 1
-    close = verify_series(close, length)
-    offset = get_offset(offset)
-    mode_tal = bool(talib) if isinstance(talib, bool) else True
+def bbands(
+    close: Series, length: Int = None, std: IntFloat = None, ddof: Int = 0,
+    mamode: str = None, talib: bool = None,
+    offset: Int = None, **kwargs: DictLike
+) -> DataFrame:
+    """Bollinger Bands (BBANDS)
 
-    if close is None: return
+    A popular volatility indicator by John Bollinger.
 
-    # Calculate Result
+    Sources:
+        https://www.tradingview.com/wiki/Bollinger_Bands_(BB)
+
+    Args:
+        close (pd.Series): Series of 'close's
+        length (int): The short period. Default: 5
+        std (int): The long period. Default: 2
+        ddof (int): Degrees of Freedom to use. Default: 0
+        mamode (str): See ``help(ta.ma)``. Default: 'sma'
+        talib (bool): If TA Lib is installed and talib is True, Returns
+            the TA Lib version. Default: True
+        ddof (int): Delta Degrees of Freedom.
+                    The divisor used in calculations is N - ddof, where N
+                    represents the number of elements. The 'talib' argument
+                    must be false for 'ddof' to work. Default: 1
+        offset (int): How many periods to offset the result. Default: 0
+
+    Kwargs:
+        fillna (value, optional): pd.DataFrame.fillna(value)
+        fill_method (value, optional): Type of fill method
+
+    Returns:
+        pd.DataFrame: lower, mid, upper, bandwidth, and percent columns.
+    """
+    # Validate
+    length = v_pos_default(length, 5)
+    close = v_series(close, length)
+
+    if close is None:
+        return
+
+    std = v_pos_default(std, 2.0)
+    ddof = int(ddof) if isinstance(ddof, int) and 0 <= ddof < length else 1
+    mamode = v_mamode(mamode, "sma")
+    mode_tal = v_talib(talib)
+    offset = v_offset(offset)
+
+    # Calculate
     if Imports["talib"] and mode_tal:
         from talib import BBANDS
         upper, mid, lower = BBANDS(close, length, std, std, tal_ma(mamode))
     else:
-        standard_deviation = stdev(close=close, length=length, ddof=ddof)
+        standard_deviation = stdev(
+            close=close, length=length, ddof=ddof, talib=mode_tal
+        )
         deviations = std * standard_deviation
         # deviations = std * standard_deviation.loc[standard_deviation.first_valid_index():,]
 
-        mid = ma(mamode, close, length=length, **kwargs)
+        mid = ma(mamode, close, length=length, talib=mode_tal, **kwargs)
         lower = mid - deviations
         upper = mid + deviations
 
@@ -42,9 +79,9 @@ def bbands(close, length=None, std=None, ddof=0, mamode=None, talib=None, offset
         mid = mid.shift(offset)
         upper = upper.shift(offset)
         bandwidth = bandwidth.shift(offset)
-        percent = bandwidth.shift(offset)
+        percent = percent.shift(offset)
 
-    # Handle fills
+    # Fill
     if "fillna" in kwargs:
         lower.fillna(kwargs["fillna"], inplace=True)
         mid.fillna(kwargs["fillna"], inplace=True)
@@ -58,7 +95,7 @@ def bbands(close, length=None, std=None, ddof=0, mamode=None, talib=None, offset
         bandwidth.fillna(method=kwargs["fill_method"], inplace=True)
         percent.fillna(method=kwargs["fill_method"], inplace=True)
 
-    # Name and Categorize it
+    # Name and Category
     lower.name = f"BBL_{length}_{std}"
     mid.name = f"BBM_{length}_{std}"
     upper.name = f"BBU_{length}_{std}"
@@ -67,7 +104,6 @@ def bbands(close, length=None, std=None, ddof=0, mamode=None, talib=None, offset
     upper.category = lower.category = "volatility"
     mid.category = bandwidth.category = upper.category
 
-    # Prepare DataFrame to return
     data = {
         lower.name: lower, mid.name: mid, upper.name: upper,
         bandwidth.name: bandwidth, percent.name: percent
@@ -77,48 +113,3 @@ def bbands(close, length=None, std=None, ddof=0, mamode=None, talib=None, offset
     bbandsdf.category = mid.category
 
     return bbandsdf
-
-
-bbands.__doc__ = \
-"""Bollinger Bands (BBANDS)
-
-A popular volatility indicator by John Bollinger.
-
-Sources:
-    https://www.tradingview.com/wiki/Bollinger_Bands_(BB)
-
-Calculation:
-    Default Inputs:
-        length=5, std=2, mamode="sma", ddof=0
-    EMA = Exponential Moving Average
-    SMA = Simple Moving Average
-    STDEV = Standard Deviation
-    stdev = STDEV(close, length, ddof)
-    if "ema":
-        MID = EMA(close, length)
-    else:
-        MID = SMA(close, length)
-
-    LOWER = MID - std * stdev
-    UPPER = MID + std * stdev
-
-    BANDWIDTH = 100 * (UPPER - LOWER) / MID
-    PERCENT = (close - LOWER) / (UPPER - LOWER)
-
-Args:
-    close (pd.Series): Series of 'close's
-    length (int): The short period. Default: 5
-    std (int): The long period. Default: 2
-    ddof (int): Degrees of Freedom to use. Default: 0
-    mamode (str): See ```help(ta.ma)```. Default: 'sma'
-    talib (bool): If TA Lib is installed and talib is True, Returns the TA Lib
-        version. Default: True
-    offset (int): How many periods to offset the result. Default: 0
-
-Kwargs:
-    fillna (value, optional): pd.DataFrame.fillna(value)
-    fill_method (value, optional): Type of fill method
-
-Returns:
-    pd.DataFrame: lower, mid, upper, bandwidth, and percent columns.
-"""

@@ -1,23 +1,55 @@
 # -*- coding: utf-8 -*-
-from pandas import DataFrame, concat
-from pandas_ta import Imports
+from pandas import DataFrame, concat, Series
+from pandas_ta._typing import DictLike, Int, IntFloat
+from pandas_ta.maps import Imports
 from pandas_ta.overlap import rma
-from pandas_ta.utils import get_drift, get_offset, verify_series, signals
+from pandas_ta.utils import signals, v_drift, v_offset, v_pos_default
+from pandas_ta.utils import v_scalar, v_series, v_talib
 
 
-def rsi(close, length=None, scalar=None, talib=None, drift=None, offset=None, **kwargs):
-    """Indicator: Relative Strength Index (RSI)"""
-    # Validate arguments
-    length = int(length) if length and length > 0 else 14
-    scalar = float(scalar) if scalar else 100
-    close = verify_series(close, length)
-    drift = get_drift(drift)
-    offset = get_offset(offset)
-    mode_tal = bool(talib) if isinstance(talib, bool) else True
+def rsi(
+    close: Series, length: Int = None, scalar: IntFloat = None,
+    talib: bool = None, drift: Int = None,
+    offset: Int = None, **kwargs: DictLike
+) -> Series:
+    """Relative Strength Index (RSI)
 
-    if close is None: return
+    The Relative Strength Index is popular momentum oscillator used to
+    measure the velocity as well as the magnitude of directional price
+    movements.
 
-    # Calculate Result
+    Sources:
+        https://www.tradingview.com/wiki/Relative_Strength_Index_(RSI)
+
+    Args:
+        close (pd.Series): Series of 'close's
+        length (int): It's period. Default: 14
+        scalar (float): How much to magnify. Default: 100
+        talib (bool): If TA Lib is installed and talib is True, Returns
+            the TA Lib version. Default: True
+        drift (int): The difference period. Default: 1
+        offset (int): How many periods to offset the result. Default: 0
+
+    Kwargs:
+        fillna (value, optional): pd.DataFrame.fillna(value)
+        fill_method (value, optional): Type of fill method
+
+    Returns:
+        pd.Series: New feature generated.
+    """
+    # Validate
+    length = v_pos_default(length, 14)
+    close = v_series(close, length)
+
+    if close is None:
+        return
+
+    scalar = v_scalar(scalar, 100)
+    mode_tal = v_talib(talib)
+    drift = v_drift(drift)
+    offset = v_offset(offset)
+
+    # Calculate
     if Imports["talib"] and mode_tal:
         from talib import RSI
         rsi = RSI(close, length)
@@ -37,13 +69,13 @@ def rsi(close, length=None, scalar=None, talib=None, drift=None, offset=None, **
     if offset != 0:
         rsi = rsi.shift(offset)
 
-    # Handle fills
+    # Fill
     if "fillna" in kwargs:
         rsi.fillna(kwargs["fillna"], inplace=True)
     if "fill_method" in kwargs:
         rsi.fillna(method=kwargs["fill_method"], inplace=True)
 
-    # Name and Categorize it
+    # Name and Category
     rsi.name = f"RSI_{length}"
     rsi.category = "momentum"
 
@@ -70,45 +102,3 @@ def rsi(close, length=None, scalar=None, talib=None, drift=None, offset=None, **
         return signalsdf
     else:
         return rsi
-
-
-rsi.__doc__ = \
-"""Relative Strength Index (RSI)
-
-The Relative Strength Index is popular momentum oscillator used to measure the
-velocity as well as the magnitude of directional price movements.
-
-Sources:
-    https://www.tradingview.com/wiki/Relative_Strength_Index_(RSI)
-
-Calculation:
-    Default Inputs:
-        length=14, scalar=100, drift=1
-    ABS = Absolute Value
-    RMA = Rolling Moving Average
-
-    diff = close.diff(drift)
-    positive = diff if diff > 0 else 0
-    negative = diff if diff < 0 else 0
-
-    pos_avg = RMA(positive, length)
-    neg_avg = ABS(RMA(negative, length))
-
-    RSI = scalar * pos_avg / (pos_avg + neg_avg)
-
-Args:
-    close (pd.Series): Series of 'close's
-    length (int): It's period. Default: 14
-    scalar (float): How much to magnify. Default: 100
-    talib (bool): If TA Lib is installed and talib is True, Returns the TA Lib
-        version. Default: True
-    drift (int): The difference period. Default: 1
-    offset (int): How many periods to offset the result. Default: 0
-
-Kwargs:
-    fillna (value, optional): pd.DataFrame.fillna(value)
-    fill_method (value, optional): Type of fill method
-
-Returns:
-    pd.Series: New feature generated.
-"""

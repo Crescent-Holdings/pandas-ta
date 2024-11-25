@@ -13,6 +13,7 @@ setup(
         "pandas_ta.overlap",
         "pandas_ta.performance",
         "pandas_ta.statistics",
+        "pandas_ta.transform",
         "pandas_ta.trend",
         "pandas_ta.utils",
         "pandas_ta.utils.data",
